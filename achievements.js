@@ -8,34 +8,33 @@
   const $ = s => document.querySelector(s);
   const $$ = s => Array.from(document.querySelectorAll(s));
 
-  const catEmoji = {
-    'Progreso': '📈', 'Modos': '🎮', 'Velocidad': '⚡', 'Racha': '🔥',
-    'Colección': '🗂️', 'Exploración': '🧭', 'General': '🏅'
-  };
+const catEmoji = {
+  Progreso:'📈', Modos:'🎮', Velocidad:'⚡',
+  Rachas:'🔥', 'Reto del día':'📆', Supervivencia:'💀',
+  Dificultad:'🥵', Colección:'🗂️', Exploración:'🧭', General:'🏅'
+};
   const tierBg = { 'oro': 'bg-amber-100', 'plata': 'bg-slate-100', 'bronce': 'bg-emerald-50' };
 
   function lsGet(k, def) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : def; } catch { return def; } }
   function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { } }
 
-  async function loadCatalog() {
-    const cached = lsGet(LS.achCatalog, null);
-    if (cached && Array.isArray(cached)) return cached;
-    try {
-      const res = await fetch('./achievements.json', { cache: 'no-store' });
-      const data = await res.json();
-      const list = Array.isArray(data.achievements) ? data.achievements : [];
-      list.forEach(a => {
-        if (!a.tier || !['oro', 'plata', 'bronce'].includes(a.tier)) {
-          a.tier = (a.category === 'Modos' || a.category === 'Velocidad') ? 'plata' : 'bronce';
-        }
-      });
-      lsSet(LS.achCatalog, list);
-      return list;
-    } catch (e) {
-      console.warn('No se pudo cargar achievements.json', e);
-      return [];
-    }
+async function loadCatalog() {
+  try {
+    const res = await fetch('./achievements.json', { cache: 'no-store' });
+    const data = await res.json();
+    const raw = Array.isArray(data.achievements) ? data.achievements : [];
+    const seen = new Set();
+    const list = raw
+      .filter(a => a && typeof a.id === 'string' && a.id !== 'ID') // quita cabecera
+      .filter(a => { if (seen.has(a.id)) return false; seen.add(a.id); return true; }) // sin duplicados
+      .map(a => ({ ...a, tier: (['oro','plata','bronce'].includes(a.tier) ? a.tier : 'bronce') }));
+    lsSet(LS.achCatalog, list);
+    return list;
+  } catch (e) {
+    console.warn('No se pudo cargar achievements.json', e);
+    return [];
   }
+}
 
   function listUnlocked() {
     const map = lsGet(LS.achievements, {});
