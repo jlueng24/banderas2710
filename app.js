@@ -457,17 +457,47 @@ function newGame(){
 function hasAchievement(id){ const a=getAchievements(); return !!a[id]; }
 function unlockIfPresent(id){ try{ unlockAchievement(id); }catch(e){} }
 function tryUnlockFirstTheme(theme){
+  let __achCatalogCache = null;
+async function loadAchCatalog(){
+  if (__achCatalogCache) return __achCatalogCache;
+  try{
+    const res = await fetch('./achievements.json', { cache:'no-store' });
+    const data = await res.json();
+    const map = {};
+    (data.achievements||[]).forEach(a=>{ map[a.id]=a; });
+    __achCatalogCache = map;
+    return map;
+  }catch(e){ return {}; }
+}
+
+async function renderFinalAchievementChips(listEl){
+  try{
+    const keys = Object.keys(getAchievements()); // IDs
+    if (!keys.length){
+      listEl.innerHTML = `<span class="text-slate-500 text-sm">Sin logros aún.</span>`;
+      return;
+    }
+    const cat = await loadAchCatalog();
+    listEl.innerHTML = keys.map(id=>{
+      const a = cat[id];
+      const name = a?.name || id;
+      return `<span class="inline-flex items-center gap-1 px-3 py-1 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs">🏅 ${name}</span>`;
+    }).join(' ');
+  }catch(e){ /* noop */ }
+}
+
   const map = { 
     'all':'logro_primer_mundo',
     'Europe':'logro_primer_europa',
     'Asia':'logro_primer_asia',
-    'America':'logro_primer_america',
+    'Americas':'logro_primer_america',
     'Africa':'logro_primer_africa',
     'Oceania':'logro_primer_oceania'
   };
   const id = map[theme];
   if (id && !hasAchievement(id)) unlockIfPresent(id);
 }
+
 // Carga catálogo para nombrar chips en la pantalla final
 let __achCatalogCache = null;
 async function loadAchCatalog(){
@@ -928,9 +958,7 @@ function endGame(){
   if (currentMode==='survival' && timeSurvivedSec>=60) unlockAchievement('survival60');
   
   
-
-  const ach = listAchievements();
-  ui.achievementsList.innerHTML = ach.length ? ach.map(a=>`<span class="px-3 py-1 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold" title="${a.desc}">🏅 ${a.name}</span>`).join('') : `<span class="text-slate-500 text-sm">Sin logros aún.</span>`;
+renderFinalAchievementChips(ui.achievementsList);
 
   if (unlockedThisRun.size > 0) { ui.openAlbumFromFinal.classList.remove('hidden'); }
   else { ui.openAlbumFromFinal.classList.add('hidden'); }
@@ -1021,15 +1049,28 @@ function renderStats(tab='overview'){
       </div>`;
     return;
   }
-
-  if (tab==='achievements'){
-    $('#statsContent').innerHTML = ach.length ? ach.map(a=>`
-      <div class="rounded-xl border p-3 bg-emerald-50/50 mb-2">
-        <div class="font-bold">🏅 ${a.name}</div>
-        <div class="text-xs text-slate-600">${a.desc}</div>
-        <div class="text-[11px] text-slate-500 mt-1">${new Date(a.date).toLocaleString('es-ES')}</div>
-      </div>`).join('') : `<div class="p-4 rounded-xl border bg-slate-50 text-sm text-slate-600">Aún no has desbloqueado logros.</div>`;
+if (tab === 'achievements') {
+  const ids = listAchievements();
+  if (!ids.length){
+    $('#statsContent').innerHTML = `<div class="p-4 rounded-xl border bg-slate-50 text-sm text-slate-600">Aún no has desbloqueado logros.</div>`;
+    return;
   }
+  const achMap = getAchievements();
+  loadAchCatalog().then(cat=>{
+    $('#statsContent').innerHTML = ids.map(id=>{
+      const meta = cat[id];
+      const name = meta?.name ?? id;
+      const desc = meta?.desc ?? '';
+      const dt = achMap[id]?.date ? new Date(achMap[id].date).toLocaleString('es-ES') : '';
+      return `<div class="rounded-xl border p-3 bg-emerald-50/50 mb-2">
+        <div class="font-bold">🏅 ${name}</div>
+        <div class="text-xs text-slate-600">${desc}</div>
+        <div class="text-[11px] text-slate-500 mt-1">${dt}</div>
+      </div>`;
+    }).join('');
+  });
+  return;
+}
 }
 
 /* ========= Logros (modal viejo → vitrina nueva) ========= */
@@ -1180,16 +1221,12 @@ ui.albumSearch?.addEventListener('input', ()=> renderAlbum(albumActiveRegion));
 
 // Logros (botón header) — compat vitrina nueva / modal antiguo
 ui.btnAchievements?.addEventListener('click', ()=>{
-  const achModal   = document.getElementById('achModal');
-  const achSection = document.getElementById('achievementsSection');
-  if (achModal && typeof achModal.showModal === 'function') {
-    renderAchievementsModal();
-    achModal.showModal();
-  } else if (achSection) {
-    achSection.classList.remove('hidden');
-    if (typeof renderAchievements === 'function') renderAchievements();
-    const top = achSection.getBoundingClientRect().top + window.scrollY - 16;
-    window.scrollTo({ top, behavior:'smooth' });
+  if (typeof window.renderAchievements === 'function') {
+    window.renderAchievements(); // la vitrina crea/abre su overlay
+  } else {
+    // Fallback: muestra la sección inline si existiera
+    const s = document.getElementById('achievementsSection');
+    if (s) s.classList.remove('hidden');
   }
 });
 $('#closeAch')?.addEventListener('click', ()=> ui.achModal?.close?.());
@@ -1250,4 +1287,3 @@ window.addEventListener('DOMContentLoaded', async ()=>{
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', setup, { once:true });
   else setup();
 })();
-
